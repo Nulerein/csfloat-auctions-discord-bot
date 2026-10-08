@@ -337,7 +337,7 @@ class ListingFormatTests(unittest.TestCase):
             result,
             "**+18.2%** [AK-47 | Neon Revolution]"
             "(https://csfloat.com/item/auction-id)\n"
-            "ставка $14.90 · реф $18.20 · 2ч 15м · float 0.1234",
+            "bid $14.90 · ref $18.20 · 2h 15m · float 0.1234",
         )
 
     def test_deal_includes_float_and_listing_age(self):
@@ -360,7 +360,7 @@ class ListingFormatTests(unittest.TestCase):
             result,
             "**+12.5%** [USP-S | Royal Blue]"
             "(https://csfloat.com/item/deal-id)\n"
-            "цена $9.50 · реф $10.80 · float 0.0345 · 18м назад",
+            "price $9.50 · ref $10.80 · float 0.0345 · 18m ago",
         )
 
 
@@ -394,7 +394,7 @@ class SlashCommandTests(unittest.IsolatedAsyncioTestCase):
 
         interaction.response.defer.assert_awaited_once_with(thinking=True)
         interaction.followup.send.assert_awaited_once_with(
-            "Не получилось получить данные CSFloat: API error"
+            "Could not retrieve CSFloat data: API error"
         )
 
     async def test_deals_command_uses_sort_choice_and_sends_results(self):
@@ -415,7 +415,7 @@ class SlashCommandTests(unittest.IsolatedAsyncioTestCase):
             "created": None,
         }]
         loop = SimpleNamespace(run_in_executor=AsyncMock(return_value=rows))
-        sort = discord_bot.app_commands.Choice(name="Самые новые", value="most_recent")
+        sort = discord_bot.app_commands.Choice(name="Newest", value="most_recent")
 
         with patch.object(discord_bot.asyncio, "get_running_loop", return_value=loop):
             await discord_bot.deals.callback(interaction, sort=sort)

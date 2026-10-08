@@ -8,37 +8,37 @@
 
 </div>
 
-Discord-бот для CSFloat, который ищет выгодные скины CS2 и показывает результаты прямо в Discord. Поддерживает аукционы, обычные лоты и автоматические уведомления о новых выгодных предложениях.
+An unofficial Discord bot for finding CS2 skin deals on CSFloat. It searches auctions and buy-now listings, and can automatically alert a Discord channel about promising auctions.
 
-> **Дисклеймер:** CSFloat AuctionRadar Discord — неофициальный проект сообщества. Он не связан с CSFloat и не одобрен этой компанией.
+> **Disclaimer:** CSFloat AuctionRadar Discord is an unofficial community project. It is not affiliated with or endorsed by CSFloat.
 
-## Возможности
+## Features
 
-- `/auctions` — аукционы, которые скоро заканчиваются, отсортированные по размеру скидки.
-- `/deals` — обычные лоты (не аукционы), отсортированные по скидке или по новизне.
-- Автоматические уведомления в выбранный Discord-канал о подходящих аукционах.
-- Сравнение цены лота с референсной ценой CSFloat; при отсутствии референса используется цена Steam. В сообщениях такие случаи помечены `*`.
-- Поддержка конфигурации через `.env` и безопасное хранение токена/ключа.
+- `/auctions` — auctions ending soon, sorted by discount.
+- `/deals` — buy-now listings sorted by discount or recency.
+- Optional automatic alerts for matching auctions in a chosen Discord channel.
+- Compares listing prices against CSFloat references, falling back to Steam prices when needed. Steam comparisons are marked with `*`.
+- Configuration through `.env`; keep your bot token and API key private.
 
-## Пример вывода
+## Example output
 
 ```text
 **+18.2%** [AK-47 | Neon Revolution (Minimal Wear)](https://csfloat.com/item/12345)
-ставка $14.90 · реф $18.20 · 2ч 15м · float 0.1234
+bid $14.90 · ref $18.20 · 2h 15m · float 0.1234
 
 **+12.5%** [USP-S | Royal Blue](https://csfloat.com/item/67890)
-цена $9.50 · реф $10.80 · float 0.0345 · 18м назад
+price $9.50 · ref $10.80 · float 0.0345 · 18m ago
 ```
 
-Это пример того, как бот показывает выгодные аукционы и обычные лоты прямо в Discord.
+The bot posts matching auctions and buy-now listings directly in Discord.
 
-## Требования
+## Requirements
 
-- Python 3.10 или новее
-- Discord-бот с токеном
-- API-ключ CSFloat (рекомендуется для стабильных запросов)
+- Python 3.10 or newer
+- A Discord application and bot token
+- A CSFloat API key (recommended for reliable requests)
 
-## Установка и запуск
+## Installation and setup
 
 ### Windows (PowerShell)
 
@@ -60,61 +60,61 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### Настройка `.env`
+### Configure `.env`
 
-Создайте приложение и бота в [Discord Developer Portal](https://discord.com/developers/applications), добавьте бота на сервер с OAuth2 scopes `bot` и `applications.commands` и разрешениями на отправку сообщений и встраивание ссылок. Получите токен на странице **Bot**. API-ключ CSFloat можно создать в профиле CSFloat на вкладке **Developer**.
+Create an application and bot in the [Discord Developer Portal](https://discord.com/developers/applications). Add the bot to your server with the OAuth2 scopes `bot` and `applications.commands`, and grant it permission to send messages and embed links. Get the bot token from the **Bot** page. Create a CSFloat API key from the **Developer** tab in your CSFloat profile.
 
-Заполните `.env`:
+Fill in `.env`:
 
-| Переменная | Обязательна | Описание |
+| Variable | Required | Description |
 | --- | --- | --- |
-| `DISCORD_TOKEN` | Да | Токен Discord-бота. |
-| `CSFLOAT_API_KEY` | Нет, но рекомендуется | API-ключ CSFloat. |
-| `GUILD_ID` | Нет | ID сервера Discord. Если задан, команды синхронизируются мгновенно. |
-| `ALERT_CHANNEL_ID` | Нет | ID канала для автоуведомлений. Если пусто, бот отвечает только на команды. |
-| `ALERT_INTERVAL_MIN` | Нет | Интервал проверки аукционов в минутах; по умолчанию `5`. |
-| `ALERT_MAX_PRICE` | Нет | Максимальная цена для уведомлений в USD; по умолчанию `30`. |
-| `ALERT_HOURS` | Нет | Уведомлять об аукционах, заканчивающихся в ближайшие N часов; по умолчанию `6`. |
-| `ALERT_MIN_DISCOUNT` | Нет | Минимальная скидка для уведомлений в процентах; по умолчанию `15`. |
+| `DISCORD_TOKEN` | Yes | Discord bot token. |
+| `CSFLOAT_API_KEY` | No, but recommended | CSFloat API key. |
+| `GUILD_ID` | No | Discord server ID. When set, commands are synced to that server immediately. |
+| `ALERT_CHANNEL_ID` | No | Channel ID for automatic alerts. If empty, the bot only responds to commands. |
+| `ALERT_INTERVAL_MIN` | No | How often to check auctions, in minutes. Default: `5`. |
+| `ALERT_MAX_PRICE` | No | Maximum price for alerts, in USD. Default: `30`. |
+| `ALERT_HOURS` | No | Alert for auctions ending within this many hours. Default: `6`. |
+| `ALERT_MIN_DISCOUNT` | No | Minimum discount for alerts, in percent. Default: `15`. |
 
-Не публикуйте `.env` и не передавайте никому токен бота и API-ключ.
+Never publish `.env` or share your bot token or API key.
 
-Уже отправленные уведомления сохраняются в локальный `seen_auctions.json` рядом со скриптом. Файл обновляется автоматически и исключён из Git.
+Previously sent alerts are stored in a local `seen_auctions.json` file next to the script. The file is updated automatically and is excluded from Git.
 
-При запуске бот проверяет числовые настройки и ID сервера/канала. При некорректном значении он завершит запуск с сообщением, указывающим имя переменной и ожидаемый формат.
+On startup, the bot validates numeric settings and server/channel IDs. Invalid values stop startup with an error that identifies the setting and expected format.
 
-### Запуск
+### Run
 
 ```bash
 python discord_bot.py
 ```
 
-Оставьте процесс запущенным, чтобы бот мог обрабатывать команды и отправлять уведомления. Для остановки используйте `Ctrl+C`.
+Keep the process running so the bot can handle commands and send alerts. Press `Ctrl+C` to stop it.
 
-## Slash-команды
+## Slash commands
 
 ### `/auctions`
 
-Параметры команды можно задавать прямо в Discord.
+Set command options directly in Discord.
 
-| Параметр | По умолчанию | Описание |
+| Option | Default | Description |
 | --- | --- | --- |
-| `max_price` | `30` | Максимальная цена в USD (от `1` до `5000`). |
-| `hours` | `12` | Показывать аукционы, завершающиеся в ближайшие N часов (от `0.1` до `168`). |
-| `top` | `8` | Максимальное количество результатов (от `1` до `15`). |
-| `min_discount` | `0` | Минимальная скидка в процентах; допустимы отрицательные значения. |
+| `max_price` | `30` | Maximum price in USD (`1` to `5000`). |
+| `hours` | `12` | Show auctions ending within this many hours (`0.1` to `168`). |
+| `top` | `8` | Maximum number of results (`1` to `15`). |
+| `min_discount` | `0` | Minimum discount in percent; negative values are allowed. |
 
 ### `/deals`
 
-| Параметр | По умолчанию | Описание |
+| Option | Default | Description |
 | --- | --- | --- |
-| `max_price` | `30` | Максимальная цена в USD (от `1` до `5000`). |
-| `min_price` | `1` | Минимальная цена в USD (от `0` до `5000`). |
-| `min_discount` | `10` | Минимальная скидка к референсной цене в процентах. |
-| `top` | `8` | Максимальное количество результатов (от `1` до `15`). |
-| `sort` | `С лучшей скидкой` | Выбор между лучшей скидкой и самыми новыми лотами. |
-| `min_sales` | `20` | Минимум продаж для референсной цены (от `0` до `1000`); `0` отключает фильтр. |
+| `max_price` | `30` | Maximum price in USD (`1` to `5000`). |
+| `min_price` | `1` | Minimum price in USD (`0` to `5000`). |
+| `min_discount` | `10` | Minimum discount from the reference price, in percent. |
+| `top` | `8` | Maximum number of results (`1` to `15`). |
+| `sort` | `Highest discount` | Choose between the highest discounts and newest listings. |
+| `min_sales` | `20` | Minimum number of sales used for the reference price (`0` to `1000`); `0` disables this filter. |
 
-## Лицензия
+## License
 
-Проект распространяется по лицензии [MIT](LICENSE).
+This project is licensed under the [MIT License](LICENSE).

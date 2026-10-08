@@ -1,16 +1,16 @@
 """
-CSFloat AuctionRadar: Discord-бот.
+CSFloat AuctionRadar Discord bot.
 
-Команды:
-  /auctions  аукционы, которые скоро закончатся, лучшие по скидке первыми
-  /deals     выгодные обычные лоты (не аукционы): с лучшей скидкой или самые новые
+Commands:
+  /auctions  auctions ending soon, sorted by discount
+  /deals     buy-now listings sorted by discount or recency
 
-Если задан ALERT_CHANNEL_ID, бот ещё и сам проверяет аукционы каждые несколько минут
-и пишет в канал о новых выгодных.
+When ALERT_CHANNEL_ID is set, the bot also checks for matching auctions
+every few minutes and posts new finds to that channel.
 
-Установка:  pip install requests discord.py python-dotenv
-Настройка:  скопируй .env.example в .env и заполни (файл .env никому не показывай)
-Запуск:     python discord_bot.py
+Install:  pip install requests discord.py python-dotenv
+Configure: copy .env.example to .env and fill it in (never share the .env file)
+Run:      python discord_bot.py
 """
 import asyncio
 import json
@@ -30,7 +30,7 @@ from discord.ext import tasks
 
 logger = logging.getLogger(__name__)
 
-try:  # .env подхватывается, если установлен python-dotenv
+try:  # Load .env when python-dotenv is installed.
     from dotenv import load_dotenv
 
     load_dotenv()
@@ -101,22 +101,22 @@ try:
         "ALERT_MIN_DISCOUNT", os.getenv("ALERT_MIN_DISCOUNT"), 15
     )
 except ValueError as e:
-    raise SystemExit(f"Ошибка конфигурации .env: {e}") from None
+    raise SystemExit(f"Invalid .env configuration: {e}") from None
 
 
-# ---------- работа с CSFloat ----------
+# ---------- CSFloat API ----------
 
 class CSFloatError(Exception):
-    """Понятная пользователю ошибка при запросе к CSFloat."""
+    """User-facing error raised when a CSFloat request fails."""
 
 
 def parse_time(s):
-    """ISO-время из API -> datetime (UTC). None, если не удалось разобрать."""
+    """Convert an API ISO timestamp to UTC, or return None if it is invalid."""
     if not s:
         return None
     s = s.replace("Z", "+00:00")
     m = re.match(r"(.*?\d{2}:\d{2}:\d{2})(\.\d+)?(.*)$", s)
-    if m:  # приводим доли секунды к 6 знакам, чтобы работало на любой версии Python
+    if m:  # Normalize fractional seconds for compatibility across Python versions.
         head, frac, tail = m.groups()
         s = head + (frac or ".0")[:7].ljust(7, "0") + tail
     try:
@@ -136,10 +136,10 @@ def load_seen(path=SEEN_AUCTIONS_FILE, now=None):
     except FileNotFoundError:
         return {}
     except (OSError, json.JSONDecodeError) as e:
-        raise RuntimeError(f"Не удалось прочитать состояние уведомлений {path}: {e}") from e
+        raise RuntimeError(f"Could not read notification state {path}: {e}") from e
 
     if not isinstance(payload, dict):
-        raise TypeError(f"Некорректный формат состояния уведомлений в {path}: ожидался JSON-объект.")
+        raise TypeError(f"Invalid notification state format in {path}: expected a JSON object.")
 
     seen = {}
     for listing_id, expiration in payload.items():
@@ -181,7 +181,7 @@ def save_seen(seen, path=SEEN_AUCTIONS_FILE):
     except (OSError, TypeError, ValueError) as e:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
-        raise RuntimeError(f"Не удалось сохранить состояние уведомлений {path}: {e}") from e
+        raise RuntimeError(f"Could not save notification state {path}: {e}") from e
 
 
 def make_session():
@@ -203,21 +203,21 @@ def api_get(session, params, retries=3):
             time.sleep(min(wait, 60))
             continue
         if r.status_code in (401, 403):
-            raise CSFloatError(f"CSFloat вернул {r.status_code}: проверь CSFLOAT_API_KEY.")
+            raise CSFloatError(f"CSFloat returned {r.status_code}: check CSFLOAT_API_KEY.")
         r.raise_for_status()
         return r.json()
-    raise CSFloatError("CSFloat просит притормозить (429). Попробуй чуть позже.")
+    raise CSFloatError("CSFloat rate limit reached (429). Please try again shortly.")
 
 
 def unpack(payload):
-    """API отдаёт либо список, либо {"data": [...], "cursor": "..."}."""
+    """The API returns either a list or {"data": [...], "cursor": "..."}."""
     if isinstance(payload, list):
         return payload, None
     return (payload.get("data") or payload.get("listings") or []), payload.get("cursor")
 
 
 def ref_price(lot):
-    """Референсная цена в центах и источник: 'ref' (CSFloat) или 'steam' (запасной вариант)."""
+    """Return the reference price in cents and its source: CSFloat or Steam fallback."""
     ref = lot.get("reference") or {}
     for key in ("predicted_price", "base_price"):
         if ref.get(key):
@@ -229,15 +229,15 @@ def ref_price(lot):
 
 
 def find_auctions(max_price, hours, pages=4):
-    """Аукционы, которые закончатся в ближайшие `hours` часов, лучшие по скидке первыми.
+    """Find auctions ending within `hours`, sorted by largest discount first.
 
-    Блокирующая функция: из бота её нужно вызывать через run_in_executor.
+    This blocking function should be called from the bot via run_in_executor.
     """
     session = make_session()
     params = {
         "type": "auction",
         "sort_by": "expires_soon",
-        "max_price": round(max_price * 100),  # API принимает центы
+        "max_price": round(max_price * 100),  # The API expects cents.
         "limit": 50,
     }
     now = datetime.now(timezone.utc)
@@ -258,12 +258,12 @@ def find_auctions(max_price, hours, pages=4):
             if exp is None or exp <= now:
                 continue
             if exp > deadline:
-                past_window = True  # список идёт по времени окончания, дальше только поздние
+                past_window = True  # Results are ordered by expiration; later pages are outside the window.
                 break
             ref, src = ref_price(lot)
             if not ref:
                 continue
-            bid = details.get("min_next_bid") or lot.get("price") or 0  # сколько ставить сейчас
+            bid = details.get("min_next_bid") or lot.get("price") or 0  # The current minimum bid.
             item = lot.get("item") or {}
             rows.append({
                 "kind": "auction", "id": lot.get("id"), "exp": exp, "bid": bid, "ref": ref,
@@ -277,17 +277,17 @@ def find_auctions(max_price, hours, pages=4):
 
 
 def find_deals(max_price, min_price, sort_by, min_sales, pages):
-    """Обычные лоты (buy_now) со скидкой к референсной цене, лучшие первыми.
+    """Find buy-now listings and sort by reference-price discount.
 
-    sort_by: "highest_discount" (лучшие по версии CSFloat) или "most_recent" (самые новые).
-    min_sales: референс должен быть построен минимум на стольких продажах (0 - не проверять).
-    Блокирующая функция: из бота её нужно вызывать через run_in_executor.
+    sort_by: "highest_discount" (best according to CSFloat) or "most_recent".
+    min_sales: minimum sales used to build the reference (0 disables this filter).
+    This blocking function should be called from the bot via run_in_executor.
     """
     session = make_session()
     params = {
         "type": "buy_now",
         "sort_by": sort_by,
-        "max_price": round(max_price * 100),  # API принимает центы
+        "max_price": round(max_price * 100),  # The API expects cents.
         "limit": 50,
     }
     if min_price > 0:
@@ -321,36 +321,36 @@ def find_deals(max_price, min_price, sort_by, min_sales, pages):
     return rows
 
 
-# ---------- оформление сообщений ----------
+# ---------- Message formatting ----------
 
 def fmt_left(exp):
     secs = max(int((exp - datetime.now(timezone.utc)).total_seconds()), 0)
     h, m = divmod(secs // 60, 60)
-    return f"{h}ч {m:02d}м"
+    return f"{h}h {m:02d}m"
 
 
 def fmt_age(created):
     secs = max(int((datetime.now(timezone.utc) - created).total_seconds()), 0)
     if secs < 60:
-        return "только что"
+        return "just now"
     if secs < 3600:
-        return f"{secs // 60}м назад"
+        return f"{secs // 60}m ago"
     if secs < 86400:
-        return f"{secs // 3600}ч назад"
-    return f"{secs // 86400}д назад"
+        return f"{secs // 3600}h ago"
+    return f"{secs // 86400}d ago"
 
 
 def fmt_row(r):
     star = "*" if r["steam"] else ""
     fv = f"{r['float']:.4f}" if r["float"] is not None else "-"
-    name = r["name"].replace("[", "(").replace("]", ")")  # квадратные скобки ломают ссылку
+    name = r["name"].replace("[", "(").replace("]", ")")  # Square brackets would break the Markdown link.
     head = f"**{r['disc']:+.1f}%** [{name}]({ITEM_URL.format(r['id'])})"
     price, ref = r["bid"] / 100, r["ref"] / 100
     if r["kind"] == "auction":
-        return f"{head}\nставка ${price:.2f} · реф ${ref:.2f}{star} · {fmt_left(r['exp'])} · float {fv}"
-    info = f"цена ${price:.2f} · реф ${ref:.2f}{star} · float {fv}"
+        return f"{head}\nbid ${price:.2f} · ref ${ref:.2f}{star} · {fmt_left(r['exp'])} · float {fv}"
+    info = f"price ${price:.2f} · ref ${ref:.2f}{star} · float {fv}"
     if r.get("offer") and r["offer"] < r["bid"]:
-        info += f" · можно предложить от ${r['offer'] / 100:.2f}"
+        info += f" · offers from ${r['offer'] / 100:.2f}"
     if r.get("created"):
         info += f" · {fmt_age(r['created'])}"
     return f"{head}\n{info}"
@@ -360,26 +360,26 @@ def build_embed(rows, title):
     lines, total = [], 0
     for r in rows:
         line = fmt_row(r)
-        if total + len(line) > 3800:  # лимит описания embed - 4096 символов
+        if total + len(line) > 3800:  # The embed description limit is 4096 characters.
             break
         lines.append(line)
         total += len(line) + 2
     embed = discord.Embed(title=title, description="\n\n".join(lines), color=0x2B7FFF)
     if any(r["steam"] for r in rows[: len(lines)]):
-        embed.set_footer(text="* нет референса CSFloat, сравнение со Steam-ценой (скидка завышена)")
+        embed.set_footer(text="* No CSFloat reference; comparison uses Steam price (discount may be overstated).")
     return embed
 
 
-# ---------- бот ----------
+# ---------- Discord bot ----------
 
 class RadarBot(discord.Client):
     def __init__(self):
         super().__init__(intents=discord.Intents.default())
         self.tree = app_commands.CommandTree(self)
-        self.seen = {}  # id лота -> время окончания; о таких лотах уже писали в канал
+        self.seen = {}  # Listing ID -> expiration time for auctions already posted to the channel.
 
     async def setup_hook(self):
-        if GUILD_ID and GUILD_ID.isdigit():  # на конкретном сервере команды появляются сразу
+        if GUILD_ID and GUILD_ID.isdigit():  # Commands appear immediately on a specific server.
             guild = discord.Object(id=int(GUILD_ID))
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
@@ -398,18 +398,18 @@ class RadarBot(discord.Client):
             alert_loop.start()
 
     async def on_ready(self):
-        logger.info("Бот запущен как %s. Команды: /auctions, /deals", self.user)
+        logger.info("Bot is online as %s. Commands: /auctions, /deals", self.user)
 
 
 client = RadarBot()
 
 
-@client.tree.command(name="auctions", description="Скоро заканчивающиеся аукционы CSFloat, лучшие по скидке первыми")
+@client.tree.command(name="auctions", description="CSFloat auctions ending soon, best discounts first")
 @app_commands.describe(
-    max_price="Максимальная цена в $",
-    hours="Закончатся в ближайшие N часов",
-    top="Сколько лотов показать",
-    min_discount="Минимальная скидка в % (можно отрицательную)",
+    max_price="Maximum price in USD",
+    hours="Ending within the next N hours",
+    top="Number of listings to show",
+    min_discount="Minimum discount in percent (negative values are allowed)",
 )
 async def auctions(
     interaction: discord.Interaction,
@@ -418,34 +418,34 @@ async def auctions(
     top: app_commands.Range[int, 1, 15] = 8,
     min_discount: float = 0.0,
 ):
-    await interaction.response.defer(thinking=True)  # запрос к CSFloat может занять несколько секунд
+    await interaction.response.defer(thinking=True)  # The CSFloat request may take a few seconds.
     try:
         rows = await asyncio.get_running_loop().run_in_executor(None, find_auctions, max_price, hours)
     except (CSFloatError, requests.RequestException) as e:
         logger.warning("CSFloat request failed for /auctions: %s", e)
-        await interaction.followup.send(f"Не получилось получить данные CSFloat: {e}")
+        await interaction.followup.send(f"Could not retrieve CSFloat data: {e}")
         return
     rows = [r for r in rows if r["disc"] >= min_discount][:top]
     if not rows:
         await interaction.followup.send(
-            "Ничего не нашлось. Попробуй поднять max_price или hours либо снизить min_discount.")
+            "No listings found. Try increasing max_price or hours, or lowering min_discount.")
         return
     await interaction.followup.send(
-        embed=build_embed(rows, f"Аукционы до ${max_price:g}, ближайшие {hours:g} ч"))
+        embed=build_embed(rows, f"Auction listings up to ${max_price:g}, ending within {hours:g}h"))
 
 
-@client.tree.command(name="deals", description="Выгодные обычные лоты (не аукционы) на CSFloat")
+@client.tree.command(name="deals", description="CSFloat buy-now listings with good discounts")
 @app_commands.describe(
-    max_price="Максимальная цена в $",
-    min_price="Минимальная цена в $ (отсекает копеечный мусор)",
-    min_discount="Минимальная скидка к референсной цене, %",
-    top="Сколько лотов показать",
-    sort="Какие лоты просматривать: с лучшей скидкой или самые новые",
-    min_sales="Референс построен минимум на стольких продажах (0 - не проверять)",
+    max_price="Maximum price in USD",
+    min_price="Minimum price in USD (filters out very cheap listings)",
+    min_discount="Minimum discount from the reference price, in percent",
+    top="Number of listings to show",
+    sort="Browse listings with the best discounts or the newest listings",
+    min_sales="Minimum sales used for the reference price (0 disables this filter)",
 )
 @app_commands.choices(sort=[
-    app_commands.Choice(name="С лучшей скидкой", value="highest_discount"),
-    app_commands.Choice(name="Самые новые", value="most_recent"),
+    app_commands.Choice(name="Highest discount", value="highest_discount"),
+    app_commands.Choice(name="Newest", value="most_recent"),
 ])
 async def deals(
     interaction: discord.Interaction,
@@ -458,39 +458,39 @@ async def deals(
 ):
     await interaction.response.defer(thinking=True)
     sort_by = sort.value if sort else "highest_discount"
-    pages = 2 if sort_by == "highest_discount" else 4  # новых лотов просматриваем больше
+    pages = 2 if sort_by == "highest_discount" else 4  # Search more pages when looking for recent listings.
     try:
         rows = await asyncio.get_running_loop().run_in_executor(
             None, find_deals, max_price, min_price, sort_by, min_sales, pages)
     except (CSFloatError, requests.RequestException) as e:
         logger.warning("CSFloat request failed for /deals: %s", e)
-        await interaction.followup.send(f"Не получилось получить данные CSFloat: {e}")
+        await interaction.followup.send(f"Could not retrieve CSFloat data: {e}")
         return
     rows = [r for r in rows if r["disc"] >= min_discount][:top]
     if not rows:
         await interaction.followup.send(
-            "Ничего не нашлось. Попробуй поднять max_price, снизить min_discount или min_sales.")
+            "No listings found. Try increasing max_price or lowering min_discount or min_sales.")
         return
-    mode = "с лучшей скидкой" if sort_by == "highest_discount" else "самые новые"
+    mode = "highest discounts" if sort_by == "highest_discount" else "newest listings"
     await interaction.followup.send(
-        embed=build_embed(rows, f"Обычные лоты ${min_price:g}-${max_price:g}, {mode}"))
+        embed=build_embed(rows, f"Buy-now listings ${min_price:g}-${max_price:g}, {mode}"))
 
 
-@tasks.loop(minutes=5)  # реальный интервал берётся из ALERT_INTERVAL_MIN
+@tasks.loop(minutes=5)  # The actual interval is configured by ALERT_INTERVAL_MIN.
 async def alert_loop():
     try:
         channel_id = int(ALERT_CHANNEL_ID)
         channel = client.get_channel(channel_id) or await client.fetch_channel(channel_id)
         rows = await asyncio.get_running_loop().run_in_executor(None, find_auctions, ALERT_MAX_PRICE, ALERT_HOURS)
         now = datetime.now(timezone.utc)
-        client.seen = {i: e for i, e in client.seen.items() if e > now}  # забываем закончившиеся
+        client.seen = {i: e for i, e in client.seen.items() if e > now}  # Drop expired auctions.
         new = [r for r in rows if r["disc"] >= ALERT_MIN_DISCOUNT and r["id"] not in client.seen][:10]
         if new:
-            await channel.send(embed=build_embed(new, f"Новые выгодные аукционы: {len(new)}"))
+            await channel.send(embed=build_embed(new, f"New auction deals: {len(new)}"))
             client.seen.update({r["id"]: r["exp"] for r in new})
         save_seen(client.seen)
-    except Exception:  # цикл не должен умирать из-за одной ошибки
-        logger.exception("[alerts] ошибка")
+    except Exception:  # Keep the loop alive if one iteration fails.
+        logger.exception("[alerts] error")
 
 
 @alert_loop.before_loop
@@ -500,7 +500,7 @@ async def _wait_until_ready():
 
 if __name__ == "__main__":
     if not TOKEN:
-        raise SystemExit("Нет DISCORD_TOKEN. Скопируй .env.example в .env и впиши токен бота.")
+        raise SystemExit("DISCORD_TOKEN is missing. Copy .env.example to .env and enter your bot token.")
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
