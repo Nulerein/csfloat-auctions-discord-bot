@@ -419,11 +419,11 @@ class ListingFormatTests(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "**к обычной цене: +18.2% · с учётом float: +25.5%** "
+            "**vs. base price: +18.2% · float-adjusted: +25.5%** "
             "[AK-47 | Neon Revolution]"
             "(https://csfloat.com/item/auction-id)\n"
-            "ставка $14.90 · обычная цена $18.20 · оценка CSFloat с float "
-            "$20.00 · 2ч 15м · float 0.1234",
+            "bid $14.90 · base price $18.20 · CSFloat float-adjusted estimate "
+            "$20.00 · 2h 15m · float 0.1234",
         )
 
     def test_deal_includes_float_and_listing_age(self):
@@ -447,11 +447,11 @@ class ListingFormatTests(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "**к обычной цене: +12.5% · с учётом float: +17.4%** "
+            "**vs. base price: +12.5% · float-adjusted: +17.4%** "
             "[USP-S | Royal Blue]"
             "(https://csfloat.com/item/deal-id)\n"
-            "цена $9.50 · обычная цена $10.80 · оценка CSFloat с float "
-            "$11.50 · float 0.0345 · 18м назад",
+            "price $9.50 · base price $10.80 · CSFloat float-adjusted estimate "
+            "$11.50 · float 0.0345 · 18m ago",
         )
 
     def test_unadjusted_price_marks_steam_fallback_and_omits_float_discount(self):
@@ -472,8 +472,11 @@ class ListingFormatTests(unittest.TestCase):
         }
         result = discord_bot.fmt_row(row)
 
-        self.assertIn("к обычной цене: -199.6% · с учётом float: +0.0%", result)
-        self.assertIn("цена $61.00 · обычная цена $20.36 · оценка CSFloat с float $61.00", result)
+        self.assertIn("vs. base price: -199.6% · float-adjusted: +0.0%", result)
+        self.assertIn(
+            "price $61.00 · base price $20.36 · CSFloat float-adjusted estimate $61.00",
+            result,
+        )
 
     def test_predicted_fallback_is_labeled_as_float_adjusted_price(self):
         row = {
@@ -494,10 +497,10 @@ class ListingFormatTests(unittest.TestCase):
 
         result = discord_bot.fmt_row(row)
 
-        self.assertIn("к оценке CSFloat с float: +25.0%", result)
-        self.assertIn("цена $15.00 · оценка CSFloat с float $20.00", result)
-        self.assertNotIn("обычная цена", result)
-        self.assertEqual(result.count("оценка CSFloat с float"), 1)
+        self.assertIn("vs. CSFloat float-adjusted estimate: +25.0%", result)
+        self.assertIn("price $15.00 · CSFloat float-adjusted estimate $20.00", result)
+        self.assertNotIn("base price", result)
+        self.assertEqual(result.count("CSFloat float-adjusted estimate"), 2)
 
 
 class SlashCommandTests(unittest.IsolatedAsyncioTestCase):
@@ -530,7 +533,7 @@ class SlashCommandTests(unittest.IsolatedAsyncioTestCase):
 
         interaction.response.defer.assert_awaited_once_with(thinking=True)
         interaction.followup.send.assert_awaited_once_with(
-            "Не получилось получить данные CSFloat: API error"
+            "Could not retrieve CSFloat data: API error"
         )
 
     async def test_deals_command_uses_sort_choice_and_sends_results(self):
@@ -554,7 +557,7 @@ class SlashCommandTests(unittest.IsolatedAsyncioTestCase):
             "created": None,
         }]
         loop = SimpleNamespace(run_in_executor=AsyncMock(return_value=rows))
-        sort = discord_bot.app_commands.Choice(name="Самые новые", value="most_recent")
+        sort = discord_bot.app_commands.Choice(name="Newest", value="most_recent")
 
         with patch.object(discord_bot.asyncio, "get_running_loop", return_value=loop):
             await discord_bot.deals.callback(interaction, sort=sort)

@@ -1,4 +1,4 @@
-# Секреты: ни в коем случае не коммить
+# Never commit secrets.
 .env
 
 # Python
